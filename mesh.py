@@ -40,7 +40,7 @@ class Mesh:
         self.quality = quality
 
         if points is None: points = []
-        self.fixed = slice(len(points))
+        self.fixed = range(len(points))
         if type(points)==list:
             points += [markov_sampler() for _ in range(N)]
         elif type(points)==np.ndarray:
@@ -80,9 +80,10 @@ class Mesh:
                 dis *= k
                 dis[self.fixed] = 0
                 points += dis
-            max_dis = np.max(np.linalg.norm(dis,axis=1))
-            print(step,max_dis/k,sep="\t", end="\r")
-            if max_dis < tol*k: break
+                if substep % (N_sub//5) == 0:
+                    max_dis = np.max(np.linalg.norm(dis,axis=1))
+                    print(step,substep,max_dis/k,sep="\t", end="\n")
+                    if max_dis < tol*k: break
         print()
 
 if __name__ == "__main__":
