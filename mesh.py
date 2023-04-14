@@ -1,7 +1,7 @@
 import numpy as np
 from numpy.ctypeslib import ndpointer as ndp
 from scipy.spatial import Delaunay, delaunay_plot_2d
-from matplotlib.pyplot import scatter, show
+#from matplotlib.pyplot import scatter, show
 from ctypes import *
 
 __all__ = ["Mesh"]
@@ -15,7 +15,8 @@ _avr.argtypes = [ndp(c_int),ndp(c_int),ndp(c_double),c_int,ndp(c_double),
         c_int]
 
 class Mesh:
-    def __init__(self, N, sample_range, quality, domain=None, step=4):
+    def __init__(self, N, sample_range, quality, domain=None, points=None,
+            step=4):
         if domain==None:
             domain = lambda x:True
 
@@ -38,24 +39,34 @@ class Mesh:
 
         self.quality = quality
 
-        points = [markov_sampler() for _ in range(N)]
+        if points is None: points = []
+        self.fixed = slice(len(points))
+        if type(points)==list:
+            points += [markov_sampler() for _ in range(N)]
+        elif type(points)==np.ndarray:
+            points = np.concatenate((
+                points,[markov_sampler() for _ in range(N)]))
+        else: raise ValueError("Invalid points type")
         tri = Delaunay(points, incremental=True)
+        print("N\tavr")
         def avr():
             indptr,indices = tri.vertex_neighbor_vertices
             quality = self.quality(tri.points)
             x = _avr(indptr,indices,quality,tri.points.shape[0],
                     tri.points,tri.points.shape[1]) / (indices.size/2)
-            print(x)
+            print(f"{tri.points.shape[0]}\t{x}",end="\r")
             return x
         while avr() > 0:
             tri.add_points([markov_sampler() for _ in range(N//5)])
+
+        print()
 
         tri.close()
 
         self.delaunay = tri
         self.points = tri.points
 
-    def refine(self, k, N_sub=20, N_tot=30, tol=1e-3, fixed=None):
+    def refine(self, k, N_sub=20, N_tot=30, tol=1e-2):
         points = self.points
         dis = np.zeros_like(points)
         print("step\tsubstep\tmax dis")
@@ -67,11 +78,12 @@ class Mesh:
                 mutual(points, points.shape[0], points.shape[1],
                        indptr, indices, self.quality(points), dis)
                 dis *= k
-                if fixed!=None: dis[fixed] = 0
+                dis[self.fixed] = 0
                 points += dis
             max_dis = np.max(np.linalg.norm(dis,axis=1))
-            print(step,max_dis,sep="\t", end="\r")
-            if max_dis < tol: break
+            print(step,max_dis/k,sep="\t", end="\r")
+            if max_dis < tol*k: break
+        print()
 
 if __name__ == "__main__":
     quality = lambda p: (.2*np.linalg.norm(p,axis=-1)+1)*.3
