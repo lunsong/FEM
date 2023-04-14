@@ -3,18 +3,14 @@ from numpy import cross, sort, zeros, array, zeros_like
 from scipy.sparse import csr_array, lil_array
 
 class FEM:
-    def __init__(self, mesh, construct="lil"):
+    def __init__(self, mesh, excluded=(), construct="lil"):
         tri = mesh.delaunay
         to_interior = -1 + zeros(len(tri.points),int)
         to_original = []
         convex_hull = sorted(set(tri.convex_hull.ravel()))
         for i in range(len(tri.points)):
-            if len(convex_hull)>0 and i == convex_hull[0]:
-                convex_hull.pop(0)
+            if i in excluded:
                 continue
-            to_interior[i] = len(to_original)
-            to_original.append(i)
-        for i in range(len(tri.points)):
             if len(convex_hull)>0 and i == convex_hull[0]:
                 convex_hull.pop(0)
                 continue
