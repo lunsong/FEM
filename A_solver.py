@@ -40,6 +40,17 @@ def make_exterior_mesh(N,dx):
     mesh = Mesh(np.prod(N),((-R,R),)*dim, quality, domain, points)
     return mesh
 
+def solve_exterior(fem,f):
+    x = np.zeros(fem.points.shape[0])
+    x[fem.fixed] = f(fem.points[fem.fixed])
+    x = (fem.nabla @ x )
+    var = slice(fem.fixed.stop,None)
+    x = x[var]
+    nabla = fem.nabla[var,var]
+    return x, nable
+
+
+
 def solve(j,k):
     pass
 

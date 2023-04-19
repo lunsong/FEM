@@ -69,6 +69,11 @@ class FEM:
         self.to_interior = to_interior
         self.to_original = to_original
         self.V6s = V6s
+        self.points = mesh.points
+        self.fixed  = mesh.fixed
+
+        #aliases
+        self.nabla = self.A
 
     def Hemholtz(self,f):
         simps = self.tri.simplices
