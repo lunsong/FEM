@@ -82,7 +82,7 @@ class Mesh:
                 points += dis
                 if substep % (N_sub//5) == 0:
                     max_dis = np.max(np.linalg.norm(dis,axis=1))
-                    print(step,substep,max_dis/k,sep="\t", end="\n")
+                    print(step,substep,max_dis/k,sep="\t", end="\r")
                     if max_dis < tol*k: break
         print()
 

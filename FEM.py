@@ -41,24 +41,30 @@ class FEM:
             print(f"{step:4}/{tot}", end="\r")
             p = tri.points[s]
             V6 = abs(det(p[1:]-p[0].reshape(1,3)))
-            if V6<1e-6: breakpoint()
+            # if V6<1e-6: raise Exception("V6<1e-6")
             V6s.append(V6)
             for i in range(4):
                 if to_interior[s[i]] == -1: continue
                 i_int = to_interior[s[i]]
-                for j in range(i+1):
+                #handle diagnal
+                l,k,m = tuple(set(range(4))-set((i,)))
+                r = cross(p[l]-p[m],p[k]-p[m])
+                A[i_int,i_int] += .5 * (r@r) / (6*V6)
+                B[i_int,i_int] += V6 / 120
+                for j in range(i):
                     if to_interior[s[j]] == -1: continue
                     j_int = to_interior[s[j]]
-                    l,k = tuple(set(range(4)) - set((i,j)))[:2]
+                    l,k = tuple(set(range(4)) - set((i,j)))
                     r0 = cross(p[i]-p[l], p[k]-p[l])
                     r1 = cross(p[j]-p[l], p[k]-p[l])
                     # The following coefficient result from
                     # A_real = A + A.T at the end the function
-                    sign = .5 if i==j else -1
-                    A[i_int,j_int] = sign * (r0@r1) / (6*V6)
+                    # if r0@r1<0:
+                        # raise Exception
+                    A[i_int,j_int] += - (r0@r1) / (6*V6)
                     # B_ii is really V6 / 60 but as said before, the
                     # conjugate is added
-                    B[i_int,j_int] = V6 / 120
+                    B[i_int,j_int] += V6 / 120
         A += A.T
         B += B.T
         self.A = A.tocsr()

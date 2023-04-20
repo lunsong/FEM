@@ -12,8 +12,10 @@ def make_exterior_mesh(N,dx):
     dim = L.shape[0]
     def quality(p):
         p = np.abs(p)-L.reshape(1,dim) / 2
+        #q = (p<-dx*2).all(axis=-1).astype(float)*Lm
         p = np.where(p<0, 0, p)
-        return dx * (6*np.linalg.norm(p,axis=-1)/Lm+1.1)
+        #return dx * (6*np.linalg.norm(p,axis=-1)/Lm+1.1) + q
+        return dx * (3*np.linalg.norm(p,axis=-1)/Lm+1.3)
     domain = lambda p: (np.linalg.norm(p)<R) & (~(np.abs(p)<L/2).all())
     if dim==3:
         def add_face_points3d(a,b,c,d):
@@ -42,13 +44,17 @@ def make_exterior_mesh(N,dx):
 
 def solve_exterior(fem,f):
     x = np.zeros(fem.points.shape[0])
+    x = np.zeros(len(fem.to_original))
     x[fem.fixed] = f(fem.points[fem.fixed])
     x = (fem.nabla @ x )
     var = slice(fem.fixed.stop,None)
     x = x[var]
     nabla = fem.nabla[var,var]
-    return x, nable
+    return {"x":x,"nabla": nabla,"points":fem.to_original[var]}
 
+def interpolate(x,points):
+    def f(y):
+        pass
 
 
 def solve(j,k):
