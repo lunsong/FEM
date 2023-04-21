@@ -2,120 +2,39 @@ from numpy.linalg import det
 from numpy import cross, sort, zeros, array, zeros_like
 from scipy.sparse import csr_array, lil_array
 
-class FEM:
-    def __init__(self, mesh, excluded=(), construct="lil"):
-        tri = mesh.delaunay
-        to_interior = -1 + zeros(len(tri.points),int)
-        to_original = []
-        convex_hull = sorted(set(tri.convex_hull.ravel()))
-        for i in range(len(tri.points)):
-            if i in excluded:
-                continue
-            if len(convex_hull)>0 and i == convex_hull[0]:
-                convex_hull.pop(0)
-                continue
-            to_interior[i] = len(to_original)
-            to_original.append(i)
-        if construct=="lil":
-            A = lil_array((len(to_original),)*2)
-            B = lil_array((len(to_original),)*2)
-        elif construct=="csr":
-            indptr, indices = tri.vertex_neighbor_vertices
-            indices_int = []
-            indptr_int = [0]
-            for i_int, i in enumerate(to_original):
-                indices_int.append(i_int)
-                for j in indices[indptr[i]:indptr[i+1]]:
-                    if to_interior[j]!=-1:
-                        indices_int.append(to_interior[j])
-                indptr_int.append(len(indices_int))
-            indptr,indices = map(lambda x:array(x,dtype='int32'),
-                    (indptr_int, indices_int))
-            N = indices.shape[0]
-            A,B = (csr_array((zeros(N),indices,indptr)) for _ in range(2))
-        else:
-            raise ValueError("unknown construct type")
-        V6s = []
-        tot = len(tri.simplices)
-        for step, s in enumerate(tri.simplices):
-            print(f"{step:4}/{tot}", end="\r")
-            p = tri.points[s]
-            V6 = abs(det(p[1:]-p[0].reshape(1,3)))
-            # if V6<1e-6: raise Exception("V6<1e-6")
-            V6s.append(V6)
-            for i in range(4):
-                if to_interior[s[i]] == -1: continue
-                i_int = to_interior[s[i]]
-                #handle diagnal
-                l,k,m = tuple(set(range(4))-set((i,)))
-                r = cross(p[l]-p[m],p[k]-p[m])
-                A[i_int,i_int] += .5 * (r@r) / (6*V6)
-                B[i_int,i_int] += V6 / 120
-                for j in range(i):
-                    if to_interior[s[j]] == -1: continue
-                    j_int = to_interior[s[j]]
-                    l,k = tuple(set(range(4)) - set((i,j)))
-                    r0 = cross(p[i]-p[l], p[k]-p[l])
-                    r1 = cross(p[j]-p[l], p[k]-p[l])
-                    # The following coefficient result from
-                    # A_real = A + A.T at the end the function
-                    # if r0@r1<0:
-                        # raise Exception
-                    A[i_int,j_int] += - (r0@r1) / (6*V6)
-                    # B_ii is really V6 / 60 but as said before, the
-                    # conjugate is added
-                    B[i_int,j_int] += V6 / 120
-        A += A.T
-        B += B.T
-        self.A = A.tocsr()
-        self.B = B.tocsr()
-        self.C = csr_array((zeros_like(self.A.data),self.A.indices,
-                            self.A.indptr))
-        self.tri = tri
-        self.to_interior = to_interior
-        self.to_original = to_original
-        self.V6s = V6s
-        self.points = mesh.points
-        self.fixed  = mesh.fixed
+from numpy.ctypeslib import ndpointer as ndp
+from ctypes import *
 
-        #aliases
-        self.nabla = self.A
+cFEM = CDLL("./FEM.so").FEM
+cFEM.argtypes=(
+        [ndp(c_int)]*8
+       +[c_int]*4
+       +[POINTER(c_int)]
+       +[ndp(c_double)]*2 )
 
-    def Hemholtz(self,f):
-        simps = self.tri.simplices
-        C,V6s,to_int = self.C,self.V6s,self.to_interior
-        tot = len(simps)
-        C.data[:] = 0
-        for step, s in enumerate(simps):
-            print(f"{step:4}/{tot}", end="\r")
-            for i in range(4):
-                i_int = to_int[s[i]]
-                if i_int == -1: continue
-                for j in range(i+1):
-                    j_int = to_int[s[j]]
-                    if j_int == -1: continue
-                    if i==j:
-                        for k in range(4):
-                            if i==k:
-                                e = 1 / 120 / 2
-                            else:
-                                e = 1 / 360 / 2
-                            C[i_int,j_int] += f[k_int] * e * V6s[step]
-                    else:
-                        for k in range(4):
-                            if k in (i,j):
-                                e = 1/360
-                            else:
-                                e = 1/720
-                            C[i_int,j_int] += f[k_int] * e * V6s[step]
-        C += C.T
-                        
+def FEM(mesh, N_excluded, construct="lil"):
+    tri = mesh.delaunay
+    to_interior = -1 + zeros(len(tri.points),int)
+    to_original = []
+    indptr, indices = tri.vertex_neighbor_vertices
+    convex_hull = array(sorted(set(tri.convex_hull.ravel())),
+            dtype=c_int)
+    N_points = mesh.points.shape[0]
+    N_interior = N_points - N_excluded - convex_hull.size
+    N_indices_int = indices.size + N_interior
+    data        = zeros(N_indices_int,c_double)
+    indices_int = zeros(N_indices_int,c_int   )
+    indptr_int  = zeros(N_interior+1 ,c_int   )
+    to_interior = zeros(N_points     ,c_int   )
+    to_original = zeros(N_interior   ,c_int   )
 
-                    
+    N_indices = c_int()
 
+    cFEM(indices, indptr, indices_int, indptr_int, convex_hull,
+        to_interior, to_original, tri.simplices, N_points,
+        convex_hull.size, N_excluded, tri.simplices.shape[0],
+        N_indices, tri.points, data)
 
-
-    
-
-
-
+    return  csr_array((data[:N_indices.value],
+                      indices_int[:N_indices.value],
+                      indptr_int))
