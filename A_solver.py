@@ -43,7 +43,6 @@ def make_exterior_mesh(N,dx):
     return mesh
 
 def solve_exterior(fem,f):
-    x = np.zeros(fem.points.shape[0])
     x = np.zeros(len(fem.to_original))
     x[fem.fixed] = f(fem.points[fem.fixed])
     x = (fem.nabla @ x )
