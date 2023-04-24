@@ -14,7 +14,6 @@ int bisect(int *arr, int i, int j, int x){
 	    else
 		return k;
     }
-    printf("\n");
     return -1;
 }
 
@@ -93,18 +92,6 @@ void FEM(
 	int i = to_original[i_int];
 	for(int _j=indptr[i]; _j<indptr[i+1]; _j++){
 	    int j_int = to_interior[indices[_j]];
-#if 0
-	    printf("i=%d j=%d i_int=%d j_int=%d\n", i,indices[_j],
-		    i_int, j_int);
-	    for(int ll=0; ll<N_indptr_int; ll++)
-		printf("%d ", indptr_int[ll]);
-	    printf("\n");
-	    for(int ll=0; ll<*N_indices_int; ll++)
-		printf("%d ", indices_int[ll]);
-	    printf("\n");
-	    int foooo;
-	    scanf("%c", &foooo);
-#endif
 	    if(j_int!=-1)
 		indices_int[(*N_indices_int)++] = j_int;
 	}
@@ -112,10 +99,6 @@ void FEM(
 	     indices_int+*N_indices_int-1);
 	indptr_int[N_indptr_int++] = *N_indices_int;
     }
-    printf("preparation done\n");
-    printf("N_interior=%d\n", N_interior);
-    fflush(stdout);
-#if 1
 #pragma omp parallel for
     for(int is=0; is<N_simplices; is++){
 	double *p[4], q[2][3];
@@ -136,11 +119,6 @@ void FEM(
 	    int m = (i+3)%4;
 	    cross(p[l],p[k],q[0],p[m]);
 	    int _idx = idx(i,i);
-	    if (_idx==-1){
-		printf("csr err: i_int=%d j_int=%d", i_int, i_int);
-		fflush(stdout);
-		return;
-	    }
 	    double val = .5 * inner(q[0],q[0]) / (6*V6);
 #pragma omp atomic
 	    data[_idx] += val;
@@ -154,25 +132,10 @@ void FEM(
 		cross(p[i],p[k],q[0],p[l]);
 		cross(p[j],p[k],q[1],p[l]);
 		_idx = idx(i,j);
-		if (_idx==-1){
-		    printf("csr err: i_int=%d j_int=%d i=%d j=%d s=%d\n",
-			    i_int, j_int, to_original[i_int],
-			    to_original[j_int], is);
-		    for(int ll=indptr_int[i_int];
-			    ll<indptr_int[i_int+1]; ll++)
-			printf("%d ", indices_int[ll]);
-		    printf("\n");
-		    for(int ll=indptr[to_original[i_int]];
-			    ll<indptr[to_original[i_int]+1]; ll++)
-			printf("%d ", indices[ll]);
-		    fflush(stdout);
-		    return;
-		}
 		val = - inner(q[0],q[1]) / (6*V6);
 #pragma omp atomic
 		data[_idx] += val;
 	    }
 	}
     }
-#endif
 }
