@@ -6,8 +6,8 @@
 #define points(i,j) _points[dim*i+j]
 #define    dis(i,j)    _dis[dim*i+j]
 
-void mutual(_points, N_points, dim, indptr,indices, quality, _dis)
-    int *indptr, *indices, N_points, dim;
+void mutual(_points, N_points, dim, indptr,indices, quality, _dis, is_uni)
+    int *indptr, *indices, N_points, dim, is_uni;
     double *_points, *quality, *_dis;
 {
 #pragma omp parallel for
@@ -22,7 +22,10 @@ void mutual(_points, N_points, dim, indptr,indices, quality, _dis)
 		    d[2] = points(i,2) - points(j,2);
 		else
 		    d[2] = 0;
-		l = (quality[i]+quality[j])/2;
+		if(is_uni)
+		    l = quality[0];
+		else
+		    l = (quality[i]+quality[j])/2;
 		l = 1 - l/sqrt(d[0]*d[0] + d[1]*d[1] + d[2]*d[2]);
 		dis(i,0) -= d[0] * l;
 		dis(j,0) += d[0] * l;
@@ -38,15 +41,18 @@ void mutual(_points, N_points, dim, indptr,indices, quality, _dis)
     return;
 }
 
-double avr_dist_satis(indptr, indices, quality, N, _points, dim)
-    int *indptr, *indices, N, dim;
+double avr_dist_satis(indptr, indices, quality, N, _points, dim, is_uni)
+    int *indptr, *indices, N, dim, is_uni;
     double *quality, *_points;
 {
     double s = 0;
 
 #pragma omp parallel for reduction(+: s)
     for(int i=0; i<N; i++){
-	s -= quality[i] * (indptr[i+1]-indptr[i]) / 2;
+	if(is_uni)
+	    s -= quality[0] * (indptr[i+1]-indptr[i]) / 2;
+	else
+	    s -= quality[i] * (indptr[i+1]-indptr[i]) / 2;
 	for(int _j=indptr[i]; _j<indptr[i+1]; _j++){
 	    int j = indices[_j];
 	    if (i<j){
