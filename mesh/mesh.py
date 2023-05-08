@@ -1,7 +1,6 @@
 import numpy as np
 from numpy.ctypeslib import ndpointer as ndp
-from scipy.spatial import Delaunay, delaunay_plot_2d
-#from matplotlib.pyplot import scatter, show
+from scipy.spatial import Delaunay
 from ctypes import *
 
 __all__ = ["Mesh"]
@@ -43,6 +42,7 @@ class Mesh:
         else:
             sampler = markov_sampler
 
+        self.domain = domain
         self.quality = quality
         self.is_uniform = is_uniform
 
@@ -74,7 +74,7 @@ class Mesh:
 
         tri.close()
 
-        self.delaunay = tri
+        self.tri = tri
         self.points = tri.points
 
     def refine(self, k, N_sub=20, N_tot=30, tol=1e-2, verbose=False):
@@ -82,8 +82,8 @@ class Mesh:
         dis = np.zeros_like(points)
         print("step\tsubstep\tmax dis")
         for step in range(N_tot):
-            self.delaunay = Delaunay(points)
-            indptr,indices = self.delaunay.vertex_neighbor_vertices
+            self.tri = Delaunay(points)
+            indptr,indices = self.tri.vertex_neighbor_vertices
             for substep in range(N_sub):
                 if self.is_uniform:
                     quality = self.quality
@@ -101,6 +101,25 @@ class Mesh:
                     print(step,substep,max_dis/k,sep="\t", end=endline)
                     if max_dis < tol*k: break
         print()
+
+    def get_simplices(self):
+        simp = self.tri.simplices
+        center = self.points[simp].mean(axis=1)
+        try:
+            mask = self.domain(center)
+        except:
+            print("domain unable to broadcast.")
+            mask = np.array(list(map(self.domain, center)))
+        return simp[mask]
+
+
+    def get_boundary(self):
+        convex_hull = self.tri.convex_hull.ravel()
+        mask = zeros(self.points.shape[0], np.int32)
+        mask[convex_hull] = 1
+        mask[self.fixed] = 1
+        return mask
+
 
 if __name__ == "__main__":
     quality = lambda p: (.2*np.linalg.norm(p,axis=-1)+1)*.3

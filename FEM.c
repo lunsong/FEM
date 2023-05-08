@@ -18,7 +18,7 @@ int bisect(int *arr, int i, int j, int x){
 }
 
 #define idx(i,j) bisect(\
-	indices_int,indptr_int[i##_int], indptr_int[i##_int+1], j##_int)
+	indices_fem,indptr_fem[a[i]], indptr_fem[a[i]+1], a[j])
 
 
 void sort(int *a, int *b){
@@ -62,55 +62,40 @@ void cross(a,b,c,r)
 void FEM(
 	int *indices,
 	int *indptr, 
-	int *indices_int, // min size = sizeof(indices)+N_interior
-	int *indptr_int,  // min size = N_interior+1
-	int *convex_hull,
-	int *to_interior,
-	int *to_original,
+	int *indices_fem, // min size = sizeof(indices)+N_interior
+	int *indptr_fem,  // min size = N_interior+1
 	int *simplices,
-	int *neumann_mask,
+	int *boundary,
 	int N_points,      // N_interior = N_points-N_excluded-N_convexh
-	int N_convex_hull,
-	int N_excluded,
 	int N_simplices,
-	int *N_indices_int,
 	double *points,
 	double *nabla,
 	double *inner,
-	double *neumann,
+	double *surface,
 	double *V6s)
 {
-    int N_interior = 0;
-    int *convex_hull_end = convex_hull + N_convex_hull;
-    for(int i=N_excluded; i<N_points; i++){
-	if(convex_hull < convex_hull_end && i==*convex_hull){
-	    convex_hull++;
-	    continue;
-	}
-	to_interior[i] = N_interior;
-	to_original[N_interior++] = i;
-    }
-    int N_indptr_int = 0;
-    indptr_int[N_indptr_int++] = 0;
-    for(int i_int=0; i_int<N_interior; i_int++){
-	indices_int[(*N_indices_int)++] = i_int;
-	int i = to_original[i_int];
-	for(int _j=indptr[i]; _j<indptr[i+1]; _j++){
-	    int j_int = to_interior[indices[_j]];
-	    if(j_int!=-1)
-		indices_int[(*N_indices_int)++] = j_int;
-	}
-	sort(indices_int+indptr_int[N_indptr_int-1],
-		indices_int+*N_indices_int-1);
-	indptr_int[N_indptr_int++] = *N_indices_int;
+    int * indices_fem_cur = indices_fem;
+    int * indptr_fem_cur = indptr_fem;
+    *(indptr_fem_cur++) = 0;
+    for(int i=0; i<N_points; i++){
+	*(indices_fem_cur++) = i;
+	for(int _j=indptr[i]; _j<indptr[i+1]; _j++)
+	    *(indices_fem_cur++) = indices[_j];
+	sort(indices_fem+*(indptr_fem_cur-1), indices_fem_cur-1);
+	*(indptr_fem_cur++) = indices_fem_cur - indices_fem;
     }
 #pragma omp parallel for
     for(int is=0; is<N_simplices; is++){
+	int a[4];
 	double *p[4], q[2][3];
-	p[0] = points + 3*simplices[4*is+0];
-	p[1] = points + 3*simplices[4*is+1];
-	p[2] = points + 3*simplices[4*is+2];
-	p[3] = points + 3*simplices[4*is+3];
+	a[0] = simplices[4*is+0];
+	a[1] = simplices[4*is+1];
+	a[2] = simplices[4*is+2];
+	a[3] = simplices[4*is+3];
+	p[0] = points + 3*a[0];
+	p[1] = points + 3*a[1];
+	p[2] = points + 3*a[2];
+	p[3] = points + 3*a[3];
 	cross(p[1],p[2],q[0],p[0]);
 	q[1][0] = p[3][0]-p[0][0];
 	q[1][1] = p[3][1]-p[0][1];
@@ -118,12 +103,10 @@ void FEM(
 	double V6 = fabs(inner(q[0],q[1]));
 	V6s[is] = V6;
 	for(int i=0; i<4; i++){
-	    int i_int = to_interior[simplices[4*is+i]];
-	    if(i_int==-1) continue;
 	    int l = (i+1)%4;
-	    int k = (i+2)%4;
-	    int m = (i+3)%4;
-	    cross(p[l],p[k],q[0],p[m]);
+	    int m = (i+2)%4;
+	    int n = (i+3)%4;
+	    cross(p[l],p[m],q[0],p[n]);
 	    int _idx = idx(i,i);
 	    double val = .5 * inner(q[0],q[0]) / (6*V6);
 #pragma omp atomic update
@@ -132,14 +115,12 @@ void FEM(
 #pragma omp atomic update
 	    inner[_idx] += val;
 	    for(int j=0; j<i; j++){
-		int j_int = to_interior[simplices[4*is+j]];
-		if(j_int==-1) continue;
-		int l = (i+1)%4;
-		int k = (i+2)%4;
-		if(l==j) l = (i+3)%4;
-		else if(k==j) k = (i+3)%4;
-		cross(p[i],p[k],q[0],p[l]);
-		cross(p[j],p[k],q[1],p[l]);
+		l = (i+1)%4;
+		m = (i+2)%4;
+		if     (l==j) l = (i+3)%4;
+		else if(m==j) m = (i+3)%4;
+		cross(p[i],p[l],q[0],p[m]);
+		cross(p[j],p[l],q[1],p[m]);
 		_idx = idx(i,j);
 		val = - inner(q[0],q[1]) / (6*V6);
 #pragma omp atomic update
@@ -147,32 +128,29 @@ void FEM(
 		val = V6 / 120;
 #pragma omp atomic update
 		inner[_idx] += val;
-		if(neumann_mask[simplices[4*is+i]] &&
-			neumann_mask[simplices[4*is+j]]){
-		    for(int w=0; w<j; w++){
-			int w_int = to_interior[simplices[4*is+w]];
-			if(w_int==-1) continue;
-			if(neumann_mask[simplices[4*is+w]]){
-			    cross(p[i],p[j],q[0],p[w]);
+		if(boundary[a[i]] && boundary[a[j]]){
+		    for(int k=0; k<j; k++){
+			if(boundary[a[k]]){
+			    cross(p[i],p[j],q[0],p[k]);
 			    val = sqrt(inner(q[0],q[0])) / 24;
 			    _idx = idx(i,i);
 #pragma omp atomic update
-			    neumann[_idx] += val;
+			    surface[_idx] += val;
 			    _idx = idx(j,j);
 #pragma omp atomic update
-			    neumann[_idx] += val;
-			    _idx = idx(w,w);
+			    surface[_idx] += val;
+			    _idx = idx(k,k);
 #pragma omp atomic update
-			    neumann[_idx] += val;
+			    surface[_idx] += val;
 			    _idx = idx(i,j);
 #pragma omp atomic update
-			    neumann[_idx] += val;
-			    _idx = idx(i,w);
+			    surface[_idx] += val;
+			    _idx = idx(i,k);
 #pragma omp atomic update
-			    neumann[_idx] += val;
-			    _idx = idx(j,w);
+			    surface[_idx] += val;
+			    _idx = idx(j,k);
 #pragma omp atomic update
-			    neumann[_idx] += val;
+			    surface[_idx] += val;
 			}
 		    }
 		}
@@ -182,10 +160,9 @@ void FEM(
 }
 
 void diag(
-	int *indices_int,
-	int *indptr_int,
+	int *indices_fem,
+	int *indptr_fem,
 	int *simplices,
-	int *to_interior,
 	int N_simplices,
 	double *V6s,
 	double *f,
@@ -196,29 +173,26 @@ void diag(
 	double V6 = V6s[is];
 	int _idx;
 	double val;
+	int a[4];
+	a[0] = simplices[4*is+0];
+	a[1] = simplices[4*is+1];
+	a[2] = simplices[4*is+2];
+	a[3] = simplices[4*is+3];
 	for(int i=0; i<4; i++){
-	    int i_int = to_interior[simplices[4*is+i]];
-	    if(i_int==-1) continue;
 	    _idx = idx(i,i);
 	    val  = 0;
 	    for(int k=0; k<4; k++){
-		int k_int = to_interior[simplices[4*is+k]];
-		if(k_int==-1) continue;
-		if(k==i) val += f[k_int] * V6 / 240;
-		else     val += f[k_int] * V6 / 720;
+		if(k==i) val += f[a[k]] * V6 / 240;
+		else     val += f[a[k]] * V6 / 720;
 	    }
 #pragma omp atomic update
 	    data[_idx] += val;
 	    for(int j=0; j<i; j++){
-		int j_int = to_interior[simplices[4*is+j]];
-		if(j_int==-1) continue;
 		_idx = idx(i,j);
 		val  = 0;
 		for(int k=0; k<4; k++){
-		    int k_int = to_interior[simplices[4*is+k]];
-		    if(k_int==-1) continue;
-		    if((k==i)||(k==j)) val += f[k_int] * V6 / 360;
-		    else               val += f[k_int] * V6 / 720;
+		    if((k==i)||(k==j)) val += f[a[k]] * V6 / 360;
+		    else               val += f[a[k]] * V6 / 720;
 		}
 #pragma omp atomic update
 		data[_idx] += val;
