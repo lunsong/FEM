@@ -14,8 +14,9 @@ _avr.argtypes = [ndp(c_int),ndp(c_int),ndp(c_double),c_int,ndp(c_double),
         c_int,c_int]
 
 class Mesh:
-    def __init__(self, N, sample_range, quality, domain=None, points=None,
-            step=4, is_uniform=False):
+    def __init__(self, N, quality, geom, step=4, is_convex=False):
+        domain, points = geom.domain, geom.points
+        sample_range = geom.sample_range
         if domain==None:
             domain = lambda x:True
 
@@ -36,15 +37,18 @@ class Mesh:
                     x = y 
             return x
 
-        if is_uniform:
+        if not callable(quality):
+            is_uniform = True
             sampler = uniform_sampler
             quality = np.array([quality])
         else:
+            is_uniform = False
             sampler = markov_sampler
 
         self.domain = domain
         self.quality = quality
         self.is_uniform = is_uniform
+        self.is_convex = is_convex
 
         if points is None: points = []
         self.fixed = range(len(points))
@@ -104,6 +108,8 @@ class Mesh:
 
     def get_simplices(self):
         simp = self.tri.simplices
+        if self.is_convex:
+            return simp
         center = self.points[simp].mean(axis=1)
         try:
             mask = self.domain(center)
@@ -117,7 +123,8 @@ class Mesh:
         convex_hull = self.tri.convex_hull.ravel()
         mask = zeros(self.points.shape[0], np.int32)
         mask[convex_hull] = 1
-        mask[self.fixed] = 1
+        if not self.is_convex:
+            mask[self.fixed] = 1
         return mask
 
 
