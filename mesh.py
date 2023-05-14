@@ -15,15 +15,13 @@ _avr.argtypes = [ndp(c_int),ndp(c_int),ndp(c_double),c_int,ndp(c_double),
 
 class Mesh:
     def __init__(self, N, quality, geom, step=4, is_convex=False):
-        domain, points = geom.domain, geom.points
-        sample_range = geom.sample_range
-        if domain==None:
-            domain = lambda x:True
+        points = geom.points
+        sample_range = geom.range()
 
         def uniform_sampler():
             while True:
                 x = [np.random.uniform(*r) for r in sample_range]
-                if domain(x):
+                if geom.domain(x)>geom.eps:
                     return x
 
         dim = len(sample_range)
@@ -45,7 +43,7 @@ class Mesh:
             is_uniform = False
             sampler = markov_sampler
 
-        self.domain = domain
+        self.domain = lambda ps: geom.domain(ps)>0
         self.quality = quality
         self.is_uniform = is_uniform
         self.is_convex = is_convex
@@ -121,7 +119,7 @@ class Mesh:
 
     def get_boundary(self):
         convex_hull = self.tri.convex_hull.ravel()
-        mask = zeros(self.points.shape[0], np.int32)
+        mask = np.zeros(self.points.shape[0], np.int32)
         mask[convex_hull] = 1
         if not self.is_convex:
             mask[self.fixed] = 1

@@ -1,6 +1,6 @@
 from numpy import (arcsin, abs as nabs, sin, cos, arccos, pi, array,
         arctan2, zeros, cross, sqrt, einsum, tan, ndarray, iterable,
-        concatenate, ceil)
+        concatenate, ceil, max as nmax, min as nmin)
 from numpy.linalg import norm
 from scipy.linalg import expm
 
@@ -10,29 +10,26 @@ from FEM import FEM
 
 
 class Geom:
-    def __init__(self, points, domain, range):
+    eps = 1e-3
+    def __init__(self, points, domain):
         self.points = points
         self.domain = domain
-        self.range = range
     def __add__(self, x):
         assert type(x)==Geom
+        domain = lambda ps: nmax((self.domain(ps),x.domain(ps)),axis=0)
         points = concatenate((self.points, x.points))
-        domain = lambda ps: self.domain(ps) | x.domain(ps)
-        range = [(min(a[0],b[0]), max(a[1],b[1]))
-                for a,b in zip(self.range, x.range)]
-        return Geom(points, domain, range)
+        points = points[nabs(domain(points))<1e-4 ]
+        return Geom(points, domain)
     def __sub__(self, x):
         assert type(x)==Geom
+        domain = lambda ps: nmin((self.domain(ps), -x.domain(ps)),axis=0)
         points = concatenate((self.points, x.points))
-        domain = lambda ps: self.domain(ps) & (~x.domain(ps))
-        return Geom(points, domain, self.range)
+        points = points[nabs(domain(points))<1e-4 ]
+        return Geom(points, domain)
     def move(self, vec):
         self.points += vec
         _domain = self.domain
-        self.domain = lambda ps: _domain(ps - vec)
-        for i in range(len(self.range)):
-            self.range[i][0] += vec[i]
-            self.range[i][1] += vec[i]
+        self.domain = lambda ps: _domain(ps-vec)
         return self
     def rot(self, axis, deg=None):
         #if deg!=None:
@@ -41,6 +38,9 @@ class Geom:
         #self.points = einsum("ij,lj->li", M, self.points)
         #return self
         raise NotImplementedError
+    def range(self):
+        ans = ((nmin(self.points,axis=0),nmax(self.points,axis=0)))
+        return array(ans).T
 
 def box(L,dx,center=None):
     N = ceil(array(L)/dx).astype(int)+1
@@ -64,8 +64,8 @@ def box(L,dx,center=None):
     if center is None:
         center = array([[0,0,0]])
     points = array(points+center)
-    inside = lambda ps: (nabs(p-center)<L/2).all(axis=-1)
-    return Geom(points, inside, [(-l/2,l/2) for l in L])
+    inside = lambda ps: (L/2-nabs(ps-center)).min(axis=-1)
+    return Geom(points, inside)
 
 def coord(thphi):
     th,phi = thphi
@@ -113,5 +113,8 @@ def ball(R,dx):
                 f = M2 @ f
                 points.append(f)
     points = array(points) * R
-    domain = lambda ps: norm(ps, axis=-1) < R
-    return Geom(points, domain, ((-R,R),)*3)
+    def foo(x):
+        if not iterable(x): return array([x])
+        return x
+    domain = lambda ps: foo(R - norm(ps, axis=-1))
+    return Geom(points, domain)
