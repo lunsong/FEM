@@ -1,0 +1,5 @@
+*.pyc
+*.so
+.ipynb_checkpoints/*
+*.out
+*.so
