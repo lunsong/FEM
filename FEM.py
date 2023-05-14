@@ -33,7 +33,7 @@ class FEM:
         diag_data   = zeros(N_indices_fem,c_double)
         bound_data  = zeros(N_indices_fem,c_double)
         indices_fem = zeros(N_indices_fem,c_int   )
-        indptr_fem  = zeros(N_interior+1 ,c_int   )
+        indptr_fem  = zeros(N_points  +1 ,c_int   )
         V6s         = zeros(N_simplices  ,c_double)
 
         cFEM(indices, indptr, indices_fem, indptr_fem, simplices,
@@ -57,16 +57,15 @@ class FEM:
         self._diag = diag
         self.fixed = mesh.fixed
         self.points = mesh.points
+        self.indptr = indptr_fem
+        self.indices = indices_fem
         self.simplices = simplices
-        self.to_interior = to_interior
-        self.to_original = to_original
 
     def diag(self, f):
         if callable(f):
             f = f(self.points)
-        f = f.astype(c_double)
         self._diag.data[:] = 0
-        cdiag(self.nabla.indices, self.nabla.indptr, self.simplices,
+        cdiag(self.indices, self.indptr, self.simplices,
               self.simplices.shape[0], self.V6s, f, self._diag.data)
         self._diag += self._diag.T
         return self._diag

@@ -168,6 +168,9 @@ void diag(
 	double *f,
 	double *data)
 {
+    for(int i=0; i<10; i++)
+	printf("%lf ", f[i]);
+    fflush(stdout);
 #pragma omp parallel for
     for(int is=0; is<N_simplices; is++){
 	double V6 = V6s[is];
