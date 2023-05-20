@@ -2,6 +2,7 @@ import numpy as np
 from numpy.ctypeslib import ndpointer as ndp
 from scipy.spatial import Delaunay
 from ctypes import *
+from diamond import diamond
 
 __all__ = ["Mesh"]
 
@@ -50,31 +51,40 @@ class Mesh:
 
         if points is None: points = []
         self.fixed = range(len(points))
-        if type(points)==list:
-            points += [sampler() for _ in range(N)]
-        elif type(points)==np.ndarray:
-            points = np.concatenate((
-                points,[sampler() for _ in range(N)]))
-        else: raise ValueError("Invalid points type")
-        tri = Delaunay(points, incremental=True)
-        print("N\tavr")
-        def avr():
-            indptr,indices = tri.vertex_neighbor_vertices
-            if self.is_uniform:
-                quality = self.quality
+
+        def add_points(ps):
+            nonlocal points
+            if type(points)==list:
+                points += ps
             else:
-                quality = self.quality(tri.points)
-            x = _avr(indptr,indices,quality,tri.points.shape[0],
-                    tri.points,tri.points.shape[1], is_uniform)
-            x /= indices.size / 2
-            print(f"{tri.points.shape[0]}\t{x}",end="\r")
-            return x
-        while avr() > 0:
-            tri.add_points([sampler() for _ in range(N//5)])
+                points = np.concatenate((points,ps))
 
-        print()
+        if self.is_uniform:
+            new_points = diamond(sample_range, quality[0])
+            new_points = new_points[geom.domain(new_points) > geom.eps]
+            add_points(new_points)
+            tri = Delaunay(points)
+        else:
+            add_points([sampler() for _ in range(N)])
+            tri = Delaunay(points, incremental=True)
+            print("N\tavr")
+            def avr():
+                indptr,indices = tri.vertex_neighbor_vertices
+                if self.is_uniform:
+                    quality = self.quality
+                else:
+                    quality = self.quality(tri.points)
+                x = _avr(indptr,indices,quality,tri.points.shape[0],
+                        tri.points,tri.points.shape[1], is_uniform)
+                x /= indices.size / 2
+                print(f"{tri.points.shape[0]}\t{x}",end="\r")
+                return x
+            while avr() > 0:
+                tri.add_points([sampler() for _ in range(N//5)])
 
-        tri.close()
+            print()
+
+            tri.close()
 
         self.tri = tri
         self.points = tri.points
